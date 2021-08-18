@@ -8,10 +8,9 @@ from torch.autograd import Variable
 from torchvision.utils import save_image
 from torchvision import datasets
 from torchvision.transforms import transforms
+import matplotlib.pyplot as plt
 
-input_dim = 10 * 10  # in use of MINIST10
-output_shape = 10 * 10  # output shape of Img
-img_shape = (10, 10)
+img_shape = (1, 28, 28)
 
 cuda = True if torch.cuda.is_available() else False
 
@@ -28,18 +27,18 @@ class Generator(nn.Module):
             return layers
 
         self.model = nn.Sequential(
-            *block(input_dim, 128, normalize=False),
+            *block(100, 128, normalize=False),
             *block(128, 256),
             *block(256, 512),
             *block(512, 1024),
-            nn.Linear(1024, 100),
+            nn.Linear(1024, int(np.prod(img_shape))),
             nn.Tanh()
         )
 
-        def forward(self, z):
-            img = self.model(z)
-            img = img.view(img.size(0), *img_shape)
-            return img
+    def forward(self, z):
+        img = self.model(z)
+        img = img.view(img.size(0), *img_shape)
+        return img
 
 
 class Discriminator(nn.Module):
@@ -47,7 +46,7 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
 
         self.model = nn.Sequential(
-            nn.Linear(100, 512),
+            nn.Linear(int(np.prod(img_shape)), 512),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Linear(512, 256),
             nn.LeakyReLU(0.2, inplace=True),
@@ -74,26 +73,26 @@ if cuda:
 
 '''When you are in need of dataload
 '''
-os.makedirs("../../data/mnist", exist_ok=True)
+os.makedirs("data/mnist", exist_ok=True)
 dataloader = torch.utils.data.DataLoader(
     datasets.MNIST(
-        "../../data/mnist",
+        "data/mnist",
         train=True,
         download=True,
         transform=transforms.Compose(
-            [transforms.Resize((10, 10)), transforms.ToTensor(), transforms.Normalize([0.5], [0.5])]
+            [transforms.Resize((28, 28)), transforms.ToTensor(), transforms.Normalize([0.5], [0.5])]
         ),
     ),
-    batch_size=4,
+    batch_size=64,
     shuffle=True,
 )
 
-optimizer_G = torch.optim.Adam(generator.parameters())  # Maybe more parameters should be provided
-optimizer_D = torch.optim.Adam(discriminator.parameters())
+optimizer_G = torch.optim.Adam(generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
+optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=0.0002, betas=(0.5, 0.999))
 
 Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 
-for epoch in range(100):
+for epoch in range(200):
     for i, (imgs, _) in enumerate(dataloader):
 
         # Adversarial ground truths
@@ -135,11 +134,10 @@ for epoch in range(100):
         d_loss.backward()
         optimizer_D.step()
 
-        print(
-            "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
-            % (epoch, 100, i, len(dataloader), d_loss.item(), g_loss.item())
-        )
-
         batches_done = epoch * len(dataloader) + i
-        if batches_done % 5 == 0:
+        if batches_done % 8000 == 0:
             save_image(gen_imgs.data[:25], "images/%d.png" % batches_done, nrow=5, normalize=True)
+    print(
+        "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
+        % (epoch, 200, i, len(dataloader), d_loss.item(), g_loss.item())
+    )
